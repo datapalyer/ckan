@@ -28,11 +28,16 @@ import ckan.include.rjsmin as rjsmin
 import ckan.include.rcssmin as rcssmin
 import ckan.plugins as p
 from ckan.common import config
+from ckan.tests.helpers import _get_test_app
+
+# This is a test Flask request context to be used internally.
+# Do not use it!
+_cli_test_request_context = None
 
 
-#NB No CKAN imports are allowed until after the config file is loaded.
-#   i.e. do the imports in methods, after _load_config is called.
-#   Otherwise loggers get disabled.
+# NB No CKAN imports are allowed until after the config file is loaded.
+#    i.e. do the imports in methods, after _load_config is called.
+#    Otherwise loggers get disabled.
 
 
 def deprecation_warning(message=None):
@@ -224,6 +229,12 @@ def load_config(config, load_site_user=True):
     from ckan.config.environment import load_environment
     load_environment(conf.global_conf, conf.local_conf)
 
+    # Set this internal test request context with the configured environment so
+    # it can be used when calling url_for from the CLI.
+    global _cli_test_request_context
+    flask_app = _get_test_app().flask_app
+    _cli_test_request_context = flask_app.test_request_context()
+
     registry = Registry()
     registry.prepare()
     import pylons
@@ -308,10 +319,6 @@ class CkanCommand(paste.script.command.Command):
 
     def _load_config(self, load_site_user=True):
         self.site_user = load_config(self.options.config, load_site_user)
-
-    def _setup_app(self):
-        cmd = paste.script.appinstall.SetupCommand('setup-app')
-        cmd.run([self.filename])
 
 
 class ManageDb(CkanCommand):
@@ -1480,7 +1487,6 @@ class CreateTestDataCommand(CkanCommand):
 
     def command(self):
         self._load_config()
-        self._setup_app()
         from ckan import plugins
         from create_test_data import CreateTestData
 
@@ -2122,6 +2128,7 @@ class FrontEndBuildCommand(CkanCommand):
 
         # Less css
         cmd = LessCommand('less')
+        cmd.options = self.options
         cmd.command()
 
         # js translation strings
